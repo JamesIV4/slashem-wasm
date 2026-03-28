@@ -95,6 +95,10 @@ EM_JS(void, js_helpers_init, (), {
         switch (type) {
         case "s":
             return UTF8ToString(ptr);
+        case "S": {
+            let strPtr = ptr ? getValue(ptr, "*") : 0;
+            return strPtr ? UTF8ToString(strPtr) : "";
+        }
         case "p":
             return ptr ? getValue(ptr, "*") : 0;
         case "c":
@@ -125,6 +129,16 @@ EM_JS(void, js_helpers_init, (), {
         case "p":
             setValue(ptr, value, "*");
             break;
+        case "S":
+            if (value === null || value === undefined) {
+                setValue(ptr, 0, "*");
+                break;
+            }
+            if (typeof value === "number") {
+                setValue(ptr, value, "*");
+                break;
+            }
+            throw new TypeError(`expected ${name} return type to be pointer or null`);
         case "s":
             if (typeof value !== "string") {
                 throw new TypeError(`expected ${name} return type to be string`);
@@ -166,6 +180,9 @@ EM_JS(void, js_helpers_init, (), {
 #define SET_CONSTANT_STRING(scope, name) set_const_str(scope, #name, name)
 #define SET_POINTER(name) set_const_ptr(#name, (void *) &name)
 #define CREATE_GLOBAL(var, type) create_global(#var, (void *) &var, type)
+#define CREATE_GLOBAL_PATH(name, ptr, type) create_global(name, (void *) (ptr), type)
+
+extern int n_dgns;
 
 EM_JS(void, set_const, (char *scope_str, char *name_str, int num), {
     let scope = UTF8ToString(scope_str);
@@ -318,13 +335,61 @@ EM_JS(void, create_global, (char *name_str, void *ptr, char *type_str), {
 });
 
 void
+create_dungeon_globals(void)
+{
+    int i;
+    char name[64];
+
+    for (i = 0; i < n_dgns; i++) {
+        Sprintf(name, "dungeons.%d.dname", i);
+        CREATE_GLOBAL_PATH(name, dungeons[i].dname, "s");
+
+        Sprintf(name, "dungeons.%d.ledger_start", i);
+        CREATE_GLOBAL_PATH(name, &dungeons[i].ledger_start, "i");
+
+        Sprintf(name, "dungeons.%d.depth_start", i);
+        CREATE_GLOBAL_PATH(name, &dungeons[i].depth_start, "i");
+    }
+}
+
+void
 js_globals_init(void)
 {
+    EM_ASM({
+        globalThis.nethackGlobal = globalThis.nethackGlobal || {};
+        globalThis.nethackGlobal.globals = globalThis.nethackGlobal.globals || {};
+    });
+
     CREATE_GLOBAL(plname, "s");
+#ifdef GOLDOBJ
+    CREATE_GLOBAL(done_money, "i");
+#endif
+    CREATE_GLOBAL_PATH("killer.format", &killer_format, "i");
+    CREATE_GLOBAL_PATH("killer.name", &killer, "S");
+
+    CREATE_GLOBAL(u.uz.dnum, "0");
+    CREATE_GLOBAL(u.uz.dlevel, "0");
+    CREATE_GLOBAL(dungeon_topology.d_mines_dnum, "0");
+    CREATE_GLOBAL(dungeon_topology.d_quest_dnum, "0");
+    CREATE_GLOBAL(dungeon_topology.d_sokoban_dnum, "0");
+    CREATE_GLOBAL(dungeon_topology.d_tower_dnum, "0");
+    CREATE_GLOBAL(dungeon_topology.d_astral_level.dnum, "0");
+    create_dungeon_globals();
+
+    CREATE_GLOBAL(WIN_MAP, "i");
+    CREATE_GLOBAL(WIN_MESSAGE, "i");
+    CREATE_GLOBAL(WIN_INVEN, "i");
+    CREATE_GLOBAL(WIN_STATUS, "i");
+
+    CREATE_GLOBAL(iflags.window_inited, "b");
+    CREATE_GLOBAL(iflags.wc_hilite_pet, "b");
+
     CREATE_GLOBAL(flags.initrole, "i");
     CREATE_GLOBAL(flags.initrace, "i");
     CREATE_GLOBAL(flags.initgend, "i");
     CREATE_GLOBAL(flags.initalign, "i");
+    CREATE_GLOBAL(flags.showexp, "b");
+    CREATE_GLOBAL(flags.time, "b");
     CREATE_GLOBAL(flags.female, "b");
     CREATE_GLOBAL(u.ux, "0");
     CREATE_GLOBAL(u.uy, "0");
