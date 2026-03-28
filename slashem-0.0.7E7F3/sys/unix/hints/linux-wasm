@@ -1,0 +1,69 @@
+#
+# Slash'EM linux-wasm
+# Makefile overrides consumed by build.wasm.sh via:
+#   make -f Makefile -f sys/unix/hints/linux-wasm ...
+#
+
+HACKDIR=/
+
+CC=emcc
+AR=emar
+LINK=emcc
+
+CFLAGS=-O3 -I../include
+CFLAGS+=-Wall
+CFLAGS+=-DDLB
+CFLAGS+=-DNO_SIGNAL
+CFLAGS+=-DNOMAIL
+CFLAGS+=-DNOCOMPRESS
+CFLAGS+=-DHACKDIR=\"$(HACKDIR)\"
+CFLAGS+=-DDEFAULT_WINDOW_SYS=\"shim\"
+CFLAGS+=-DNOTTYGRAPHICS -DSHIM_GRAPHICS
+CFLAGS+=-DSELF_RECOVER
+CFLAGS+=-DUSE_TILES
+
+LFLAGS=-s WASM=1
+LFLAGS+=-s ALLOW_TABLE_GROWTH
+LFLAGS+=-s ASYNCIFY -s ASYNCIFY_IMPORTS='["local_callback"]'
+LFLAGS+=-O3
+LFLAGS+=-s MODULARIZE
+LFLAGS+=-s EXPORT_ES6=1
+LFLAGS+=-s ERROR_ON_UNDEFINED_SYMBOLS=0
+LFLAGS+=-s EXPORTED_FUNCTIONS='["_main", "_shim_graphics_set_callback", "_malloc", "_free", "_mapglyph", "_glyph_to_tile", "_recover_savefile", "_resume_checkpoint_save", "_nh3d_glyph_at", "_nh_top_item_glyph_under_player"]'
+LFLAGS+=-s EXPORTED_RUNTIME_METHODS='["cwrap", "ccall", "addFunction", "removeFunction", "UTF8ToString", "stringToUTF8", "getValue", "setValue", "ENV", "FS", "IDBFS"]'
+LFLAGS+=-lidbfs.js
+LFLAGS+=--embed-file ../wasm-data@/
+
+GAME=slashem.js
+WASM_TARGET=Wasmunix
+
+WINSRC = ../win/shim/winshim.c tile.c
+WINOBJ = winshim.o tile.o
+WINLIB =
+
+SYSSRC = ../sys/libnh/libnhmain.c \
+	../sys/share/ioctl.c ../sys/share/unixtty.c \
+	../sys/unix/unixunix.c ../sys/unix/unixres.c \
+	../../resume_checkpoint_save.c
+SYSOBJ = libnhmain.o ioctl.o unixtty.o unixunix.o unixres.o resume_checkpoint_save.o
+
+CHOWN=true
+CHGRP=true
+
+VARDIRPERM = 0755
+VARFILEPERM = 0600
+GAMEPERM = 0755
+
+$(WASM_TARGET): $(HOBJ) Makefile
+	@echo "Loading ..."
+	@$(LINK) $(LFLAGS) -o $(GAME) $(HOBJ) $(WINLIB) $(LIBS)
+	@touch $(WASM_TARGET)
+
+libnhmain.o: ../sys/libnh/libnhmain.c $(HACK_H)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+resume_checkpoint_save.o: ../../resume_checkpoint_save.c $(HACK_H)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+winshim.o: ../win/shim/winshim.c $(HACK_H)
+	$(CC) $(CFLAGS) -c -o $@ $<

@@ -50,7 +50,9 @@
  * Define all of those you want supported in your binary.
  * Some combinations make no sense.  See the installation document.
  */
+#if !defined(NOTTYGRAPHICS)
 #define TTY_GRAPHICS		/* good old tty based graphics */
+#endif
 /* #define X11_GRAPHICS */	/* X11 interface */
 /* #define QT_GRAPHICS */	/* Qt Interface */
 /* #define KDE */		/* KDE Interface */
@@ -60,6 +62,7 @@
 /* #define MSWIN_GRAPHICS */	/* Windows NT, CE, Graphics */
 /* #define GL_GRAPHICS */	/* OpenGL graphics */
 /* #define SDL_GRAPHICS */	/* Software SDL graphics */
+/* #define SHIM_GRAPHICS */	/* WASM/library shim callback interface */
 
 /*
  * Define the default window system.  This should be one that is compiled
@@ -160,6 +163,12 @@
 # endif
 #endif
 
+#ifdef SHIM_GRAPHICS
+# ifndef DEFAULT_WINDOW_SYS
+#  define DEFAULT_WINDOW_SYS "shim"
+# endif
+#endif
+
 #if defined(GL_GRAPHICS) || defined(SDL_GRAPHICS)
 # define GRAPHIC_TOMBSTONE     /* Use graphical tombstone */
 /* -AJA- workaround for clash with ZLIB headers */
@@ -228,7 +237,7 @@
  *	compression.
  */
 
-#ifdef UNIX
+#if defined(UNIX) && !defined(NOCOMPRESS)
 /* path and file name extension for compression program */
 # define COMPRESS "/usr/bin/compress" /* Lempel-Ziv compression */
 # define COMPRESS_EXTENSION ".Z"	     /* compress's extension */

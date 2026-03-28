@@ -210,7 +210,9 @@
  * A stat system call is done on the mailbox every MAILCKFREQ moves.
  */
 
+#ifndef NOMAIL
 #define MAIL			/* Deliver mail during the game */
+#endif
 
 /* The Andrew Message System does mail a little differently from normal
  * UNIX.  Mail is deposited in the user's own directory in ~/Mailbox

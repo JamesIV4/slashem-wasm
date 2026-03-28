@@ -1,0 +1,14 @@
+# Prevent the wasm game build from trying to rebuild the native generators.
+../util/makedefs: ;
+../util/lev_comp: ;
+../util/dgn_comp: ;
+../util/dlb: ;
+../util/tilemap: ;
+../include/onames.h: ;
+../include/pm.h: ;
+../include/vis_tab.h: ;
+../include/date.h: ;
+../include/filename.h: ;
+monstr.c: ;
+vis_tab.c: ;
+tile.c: ;

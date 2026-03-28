@@ -1,0 +1,1 @@
+5.0.1|/home/james/Repos/tools/emsdk/upstream/bin

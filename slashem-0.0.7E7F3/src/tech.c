@@ -12,6 +12,7 @@
 static boolean FDECL(gettech, (int *));
 static boolean FDECL(dotechmenu, (int, int *));
 static void NDECL(doblitzlist);
+static void FDECL(aborttech, (SHORT_P));
 static int FDECL(get_tech_no,(int));
 static int FDECL(techeffects, (int));
 static void FDECL(hurtmon, (struct monst *,int));
@@ -238,6 +239,7 @@ tech_known(tech)
 /* Called to prematurely stop a technique */
 void
 aborttech(tech)
+	short tech;
 {
 	int i;
 
