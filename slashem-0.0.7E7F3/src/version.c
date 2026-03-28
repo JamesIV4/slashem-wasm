@@ -80,6 +80,22 @@ boolean complain;
 	  ) {
 	    if (complain)
 		pline("Version mismatch for file \"%s\".", filename);
+#ifdef __EMSCRIPTEN__
+	    if (complain) {
+		fprintf(stderr,
+		    "[WASM version] file=%s actual={incarnation=0x%08lx feature_set=0x%08lx entity_count=0x%08lx struct_sizes=0x%08lx} expected={incarnation=0x%08lx feature_set=0x%08lx entity_count=0x%08lx struct_sizes=0x%08lx}\n",
+		    filename ? filename : "(unknown)",
+		    (unsigned long) version_data->incarnation,
+		    (unsigned long) version_data->feature_set,
+		    (unsigned long) version_data->entity_count,
+		    (unsigned long) version_data->struct_sizes,
+		    (unsigned long) VERSION_NUMBER,
+		    (unsigned long) VERSION_FEATURES,
+		    (unsigned long) VERSION_SANITY1,
+		    (unsigned long) VERSION_SANITY2);
+		fflush(stderr);
+	    }
+#endif
 	    return FALSE;
 	} else if (
 #ifndef IGNORED_FEATURES
@@ -93,6 +109,22 @@ boolean complain;
 	    if (complain)
 		pline("Configuration incompatibility for file \"%s\".",
 		      filename);
+#ifdef __EMSCRIPTEN__
+	    if (complain) {
+		fprintf(stderr,
+		    "[WASM version] file=%s actual={incarnation=0x%08lx feature_set=0x%08lx entity_count=0x%08lx struct_sizes=0x%08lx} expected={incarnation=0x%08lx feature_set=0x%08lx entity_count=0x%08lx struct_sizes=0x%08lx}\n",
+		    filename ? filename : "(unknown)",
+		    (unsigned long) version_data->incarnation,
+		    (unsigned long) version_data->feature_set,
+		    (unsigned long) version_data->entity_count,
+		    (unsigned long) version_data->struct_sizes,
+		    (unsigned long) VERSION_NUMBER,
+		    (unsigned long) VERSION_FEATURES,
+		    (unsigned long) VERSION_SANITY1,
+		    (unsigned long) VERSION_SANITY2);
+		fflush(stderr);
+	    }
+#endif
 	    return FALSE;
 	}
 	return TRUE;

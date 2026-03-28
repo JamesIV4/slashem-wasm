@@ -366,11 +366,17 @@ extern long *FDECL(alloc, (unsigned int));		/* alloc.c */
 
 /* Used for consistency checks of various data files; declare it here so
    that utility programs which include config.h but not hack.h can see it. */
+#ifdef PORTABLE_VERSION_INFO_32
+typedef unsigned int version_info_word;
+#else
+typedef unsigned long version_info_word;
+#endif
+
 struct version_info {
-	unsigned long	incarnation;	/* actual version number */
-	unsigned long	feature_set;	/* bitmask of config settings */
-	unsigned long	entity_count;	/* # of monsters and objects */
-	unsigned long	struct_sizes;	/* size of key structs */
+	version_info_word incarnation;	/* actual version number */
+	version_info_word feature_set;	/* bitmask of config settings */
+	version_info_word entity_count;	/* # of monsters and objects */
+	version_info_word struct_sizes;	/* size of key structs */
 };
 
 /*
