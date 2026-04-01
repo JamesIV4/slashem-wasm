@@ -8,11 +8,6 @@
 
 STATIC_DCL void FDECL(mkbox_cnts,(struct obj *));
 STATIC_DCL void FDECL(obj_timer_checks,(struct obj *, XCHAR_P, XCHAR_P, int));
-#ifdef __EMSCRIPTEN__
-STATIC_DCL int FDECL(wasm_debug_class_last, (int));
-STATIC_DCL int FDECL(wasm_debug_class_prob_sum, (int));
-STATIC_DCL void FDECL(wasm_debug_dump_object_rows, (const char *, int, int));
-#endif
 #ifdef OVL1
 STATIC_DCL void FDECL(container_weight, (struct obj *));
 STATIC_DCL struct obj *FDECL(save_mtraits, (struct obj *, struct monst *));
@@ -30,66 +25,6 @@ struct icp {
     int  iprob;		/* probability of an item type */
     char iclass;	/* item class */
 };
-
-#ifdef __EMSCRIPTEN__
-STATIC_OVL int
-wasm_debug_class_last(oclass)
-int oclass;
-{
-	int first, last;
-
-	if (oclass < 0 || oclass >= MAXOCLASSES)
-		return -1;
-	first = bases[oclass];
-	if (first < 0 || first >= NUM_OBJECTS)
-		return -1;
-	last = first;
-	while ((last + 1) < NUM_OBJECTS && objects[last + 1].oc_class == oclass)
-		last++;
-	return last;
-}
-
-STATIC_OVL int
-wasm_debug_class_prob_sum(oclass)
-int oclass;
-{
-	int first, last, i, sum;
-
-	first = (oclass >= 0 && oclass < MAXOCLASSES) ? bases[oclass] : -1;
-	last = wasm_debug_class_last(oclass);
-	if (first < 0 || last < first)
-		return -1;
-	sum = 0;
-	for (i = first; i <= last; i++)
-		sum += objects[i].oc_prob;
-	return sum;
-}
-
-STATIC_OVL void
-wasm_debug_dump_object_rows(label, first, last)
-const char *label;
-int first, last;
-{
-	int i, start, end;
-
-	start = (first < 0) ? 0 : first;
-	end = (last >= NUM_OBJECTS) ? (NUM_OBJECTS - 1) : last;
-	for (i = start; i <= end; i++) {
-		const char *name = OBJ_NAME(objects[i]);
-
-		fprintf(stderr,
-			"[WASM mkobj:%s] i=%d class=%d prob=%d name_idx=%d "
-			"descr_idx=%d name=%s\n",
-			label ? label : "?",
-			i,
-			objects[i].oc_class,
-			objects[i].oc_prob,
-			objects[i].oc_name_idx,
-			objects[i].oc_descr_idx,
-			name ? name : "<null>");
-	}
-}
-#endif
 
 #ifdef OVL1
 
@@ -178,9 +113,7 @@ mkobj(oclass, artif)
 char oclass;
 boolean artif;
 {
-	int tprob, i, prob = rnd(1000), prob_roll;
-
-	prob_roll = prob;
+	int tprob, i, prob = rnd(1000);
 
 	if(oclass == RANDOM_CLASS) {
 		const struct icp *iprobs =
@@ -200,37 +133,8 @@ boolean artif;
 	i = bases[(int)oclass];
 	while((prob -= objects[i].oc_prob) > 0) i++;
 
-	if(objects[i].oc_class != oclass || !OBJ_NAME(objects[i])) {
-#ifdef __EMSCRIPTEN__
-		int class_last, class_sum, class_first;
-		const char *name;
-
-		class_first = ((int)oclass >= 0 && (int)oclass < MAXOCLASSES)
-				? bases[(int)oclass] : -1;
-		class_last = wasm_debug_class_last((int)oclass);
-		class_sum = wasm_debug_class_prob_sum((int)oclass);
-		name = (i >= 0 && i < NUM_OBJECTS) ? OBJ_NAME(objects[i]) : (char *) 0;
-		fprintf(stderr,
-			"[WASM mkobj:panic] oclass=%d prob_roll=%d base=%d "
-			"class_last=%d class_sum=%d final_i=%d final_class=%d "
-			"final_prob=%d final_name_idx=%d final_name=%s\n",
-			(int)oclass,
-			prob_roll,
-			class_first,
-			class_last,
-			class_sum,
-			i,
-			(i >= 0 && i < NUM_OBJECTS) ? objects[i].oc_class : -1,
-			(i >= 0 && i < NUM_OBJECTS) ? objects[i].oc_prob : -1,
-			(i >= 0 && i < NUM_OBJECTS) ? objects[i].oc_name_idx : -1,
-			name ? name : "<null>");
-		wasm_debug_dump_object_rows("panic_window", i - 4, i + 4);
-		if (class_last >= class_first && class_first >= 0)
-			wasm_debug_dump_object_rows("class_tail", class_last - 6,
-						    class_last);
-#endif
+	if(objects[i].oc_class != oclass || !OBJ_NAME(objects[i]))
 		panic("probtype error, oclass=%d i=%d", (int) oclass, i);
-	}
 
 	return(mksobj(i, TRUE, artif));
 }

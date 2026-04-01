@@ -1433,29 +1433,6 @@ static int lockfd;	/* for lock_file() to pass to unlock_file() */
 
 #define HUP	if (!program_state.done_hup)
 
-#ifdef __EMSCRIPTEN__
-STATIC_OVL void
-wasm_lock_debug(filename, lockname, errnosv)
-const char *filename;
-const char *lockname;
-int errnosv;
-{
-	const char *safe_filename = filename ? filename : "(null)";
-	const char *safe_lockname = lockname ? lockname : "(null)";
-
-	(void) fprintf(stderr, "[WASM lock] errno=%d filename=%s\n",
-		errnosv, safe_filename);
-	(void) fprintf(stderr, "[WASM lock] lockname=%s\n", safe_lockname);
-# ifdef NO_FILE_LINKS
-	(void) fprintf(stderr,
-		"[WASM lock] NO_FILE_LINKS active (using open/O_EXCL).\n");
-# else
-	(void) fprintf(stderr, "[WASM lock] hard-link lock mode active.\n");
-# endif
-	(void) fflush(stderr);
-}
-#endif
-
 STATIC_OVL char *
 make_lockname(filename, lockname)
 const char *filename;
@@ -1548,18 +1525,10 @@ int retryct;
 
 		break;
 	    case ENOENT:
-#ifdef __EMSCRIPTEN__
-		HUP perror(lockname);
-		wasm_lock_debug(filename, lockname, errnosv);
-#endif
 		HUP raw_printf("Can't find file %s to lock!", filename);
 		nesting--;
 		return FALSE;
 	    case EACCES:
-#ifdef __EMSCRIPTEN__
-		HUP perror(lockname);
-		wasm_lock_debug(filename, lockname, errnosv);
-#endif
 		HUP raw_printf("No write permission to lock %s!", filename);
 		nesting--;
 		return FALSE;
@@ -1573,9 +1542,6 @@ int retryct;
 # endif
 	    default:
 		HUP perror(lockname);
-#ifdef __EMSCRIPTEN__
-		wasm_lock_debug(filename, lockname, errnosv);
-#endif
 		HUP raw_printf(
 			     "Cannot lock %s for unknown reason (%d).",
 			       filename, errnosv);

@@ -9,12 +9,6 @@ STATIC_DCL void FDECL(setgemprobs, (d_level*));
 STATIC_DCL void FDECL(shuffle,(int,int,BOOLEAN_P));
 STATIC_DCL void NDECL(shuffle_all);
 STATIC_DCL boolean FDECL(interesting_to_discover,(int));
-#ifdef __EMSCRIPTEN__
-STATIC_DCL void FDECL(wasm_debug_log_gem_class_summary,
-		      (const char *, int, int, int));
-STATIC_DCL void FDECL(wasm_debug_dump_gem_class_rows,
-		      (const char *, int, int));
-#endif
 
 static NEARDATA short disco[NUM_OBJECTS] = DUMMY;
 
@@ -95,62 +89,6 @@ d_level *dlev;
 		/* KMH, balance patch -- valuable gems now sum to 171 */
 		objects[j].oc_prob = (171+j-first)/(LAST_GEM+1-first);
 }
-
-#ifdef __EMSCRIPTEN__
-STATIC_OVL void
-wasm_debug_log_gem_class_summary(label, first, last, sum)
-const char *label;
-int first, last, sum;
-{
-	const char *rock_name;
-
-	rock_name = (ROCK >= 0 && ROCK < NUM_OBJECTS) ? OBJ_NAME(objects[ROCK])
-						       : (char *) 0;
-	if (sum < 0) {
-		int i;
-
-		sum = 0;
-		for (i = first; i < last; i++)
-			sum += objects[i].oc_prob;
-	}
-	fprintf(stderr,
-		"[WASM gems:%s] base=%d first=%d last=%d sum=%d last_gem=%d "
-		"rock_class=%d rock_prob=%d rock_name_idx=%d rock_name=%s\n",
-		label ? label : "?",
-		bases[GEM_CLASS],
-		first,
-		last - 1,
-		sum,
-		LAST_GEM,
-		objects[ROCK].oc_class,
-		objects[ROCK].oc_prob,
-		objects[ROCK].oc_name_idx,
-		rock_name ? rock_name : "<null>");
-}
-
-STATIC_OVL void
-wasm_debug_dump_gem_class_rows(label, first, last)
-const char *label;
-int first, last;
-{
-	int i;
-
-	for (i = first; i < last; i++) {
-		const char *name = OBJ_NAME(objects[i]);
-
-		fprintf(stderr,
-			"[WASM gems:%s] i=%d class=%d prob=%d name_idx=%d "
-			"descr_idx=%d name=%s\n",
-			label ? label : "?",
-			i,
-			objects[i].oc_class,
-			objects[i].oc_prob,
-			objects[i].oc_name_idx,
-			objects[i].oc_descr_idx,
-			name ? name : "<null>");
-	}
-}
-#endif
 
 /* shuffle descriptions on objects o_low to o_high */
 STATIC_OVL void
@@ -245,22 +183,12 @@ register char oclass;
 	check:
 		sum = 0;
 		for(i = first; i < last; i++) sum += objects[i].oc_prob;
-#ifdef __EMSCRIPTEN__
-		if (oclass == GEM_CLASS)
-			wasm_debug_log_gem_class_summary("init_objects", first,
-							 last, sum);
-#endif
 		if(sum == 0) {
 			for(i = first; i < last; i++)
 			    objects[i].oc_prob = (1000+i-first)/(last-first);
 			goto check;
 		}
 		if(sum != 1000) {
-#ifdef __EMSCRIPTEN__
-			if (oclass == GEM_CLASS)
-				wasm_debug_dump_gem_class_rows(
-					"init_objects:mismatch", first, last);
-#endif
 			error("init-prob error for class %d (%d%%)", oclass, sum);
 		}
 		first = last;
@@ -347,20 +275,6 @@ void
 oinit()			/* level dependent initialization */
 {
 	setgemprobs(&u.uz);
-#ifdef __EMSCRIPTEN__
-	{
-		int first, last, sum;
-
-		first = bases[GEM_CLASS];
-		last = first;
-		sum = 0;
-		while (last < NUM_OBJECTS && objects[last].oc_class == GEM_CLASS) {
-			sum += objects[last].oc_prob;
-			last++;
-		}
-		wasm_debug_log_gem_class_summary("oinit", first, last, sum);
-	}
-#endif
 }
 
 void
