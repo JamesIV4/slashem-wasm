@@ -9,12 +9,13 @@ WASM_DATA_DIR="$SLASHEM_DIR/wasm-data"
 EM_CACHE_DIR="$SCRIPT_DIR/.emcache"
 WASM_HINTS="$SLASHEM_DIR/sys/unix/hints/linux-wasm"
 WASM_SRC_NOOP="$SLASHEM_DIR/sys/unix/hints/linux-wasm-src-noop"
+VALIDATION_SCRIPT="$SCRIPT_DIR/scripts/validate_wasm_artifacts.py"
 
-NATIVE_OVERRIDES=(
-    CC=cc
-    LINK=cc
-    AR=ar
-    LFLAGS=
+TOOL_OVERRIDES=(
+    CC=emcc
+    LINK=emcc
+    AR=emar
+    "LFLAGS=-O3 -s WASM=1 -s ENVIRONMENT=node -s NODERAWFS=1 -s EXIT_RUNTIME=1"
 )
 
 mkdir -p "$EM_CACHE_DIR"
@@ -34,6 +35,16 @@ if ! command -v emcc >/dev/null 2>&1; then
     exit 1
 fi
 
+if ! command -v node >/dev/null 2>&1; then
+    echo "Error: node not found. The wasm32 phase-1 generator tools run under Node.js."
+    exit 1
+fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "Error: python3 not found. It is required for WASM data validation."
+    exit 1
+fi
+
 if [ ! -f "$WASM_HINTS" ]; then
     echo "Error: missing make override file: $WASM_HINTS"
     exit 1
@@ -41,6 +52,11 @@ fi
 
 if [ ! -f "$WASM_SRC_NOOP" ]; then
     echo "Error: missing src no-op make fragment: $WASM_SRC_NOOP"
+    exit 1
+fi
+
+if [ ! -f "$VALIDATION_SCRIPT" ]; then
+    echo "Error: missing validation script: $VALIDATION_SCRIPT"
     exit 1
 fi
 
@@ -56,34 +72,37 @@ echo "--- Setup: generating Unix Makefiles ---"
 echo "  done."
 
 echo
-echo "--- Phase 1: building native generators and data archives ---"
+echo "--- Phase 1: building wasm32 generator tools and data sources ---"
 copy_bootstrap_sources
 
 rm -f "$SLASHEM_DIR/src/"*.o
 rm -f "$SLASHEM_DIR/util/"*.o
+rm -f "$SLASHEM_DIR/util/"*.wasm
 
 make -C "$SLASHEM_DIR/util" \
     -f Makefile -f ../sys/unix/hints/linux-wasm \
-    "${NATIVE_OVERRIDES[@]}" \
+    "${TOOL_OVERRIDES[@]}" \
     makedefs lev_comp dgn_comp dlb tilemap \
     ../include/onames.h ../include/pm.h ../include/vis_tab.h \
     ../src/monstr.c ../src/tile.c
 
 make -C "$SLASHEM_DIR/src" \
     -f Makefile -f ../sys/unix/hints/linux-wasm \
-    "${NATIVE_OVERRIDES[@]}" \
+    "${TOOL_OVERRIDES[@]}" \
     ../include/date.h ../include/filename.h
 
 make -C "$SLASHEM_DIR/dat" \
     -f Makefile -f ../sys/unix/hints/linux-wasm \
-    "${NATIVE_OVERRIDES[@]}"
+    "${TOOL_OVERRIDES[@]}"
+
+python3 "$VALIDATION_SCRIPT" "$SLASHEM_DIR/dat"
 
 make -C "$SLASHEM_DIR" \
     -f Makefile -f sys/unix/hints/linux-wasm \
-    "${NATIVE_OVERRIDES[@]}" \
+    "${TOOL_OVERRIDES[@]}" \
     dlb
 
-echo "  native generators and archives ready."
+echo "  wasm32 generators, validated level data, and archives ready."
 
 echo
 echo "--- Phase 2: preparing embedded WASM data ---"

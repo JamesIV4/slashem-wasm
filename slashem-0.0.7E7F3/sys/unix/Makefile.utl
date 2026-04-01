@@ -428,7 +428,7 @@ tags: $(UTILSRCS)
 	@ctags -tw $(UTILSRCS)
 
 clean:
-	-rm -f *.o
+	-rm -f *.o *.wasm
 
 spotless: clean
 	-rm -f lev_lex.c lev_yacc.c dgn_lex.c dgn_yacc.c
