@@ -21,6 +21,44 @@
 #define debugf(...)
 #endif
 
+enum shim_status_fields {
+    SHIM_BL_CHARACTERISTICS = -3,
+    SHIM_BL_RESET = -2,
+    SHIM_BL_FLUSH = -1,
+    SHIM_BL_TITLE = 0,
+    SHIM_BL_STR,
+    SHIM_BL_DX,
+    SHIM_BL_CO,
+    SHIM_BL_IN,
+    SHIM_BL_WI,
+    SHIM_BL_CH,
+    SHIM_BL_ALIGN,
+    SHIM_BL_SCORE,
+    SHIM_BL_CAP,
+    SHIM_BL_GOLD,
+    SHIM_BL_ENE,
+    SHIM_BL_ENEMAX,
+    SHIM_BL_XP,
+    SHIM_BL_AC,
+    SHIM_BL_HD,
+    SHIM_BL_TIME,
+    SHIM_BL_HUNGER,
+    SHIM_BL_HP,
+    SHIM_BL_HPMAX,
+    SHIM_BL_LEVELDESC,
+    SHIM_BL_EXP,
+    SHIM_BL_CONDITION,
+    SHIM_MAXBLSTATS
+};
+
+#define SHIM_RAW_STAT_HELD 0x00000100UL
+
+static void FDECL(shim_status_raw_bridge, (int, int, const char **));
+static void NDECL(shim_status_bridge_reconfig);
+static void FDECL(shim_status_bridge_emit_string, (int, const char *));
+static void FDECL(shim_status_bridge_emit_mask, (unsigned long));
+static void NDECL(shim_status_bridge_flush);
+
 #ifdef __EMSCRIPTEN__
 static char *shim_callback_name = (char *) 0;
 void shim_graphics_set_callback(char *cb_name);
@@ -93,12 +131,47 @@ void name fn_args { \
 }
 #endif
 
-VDECLCB(shim_init_nhwindows, (int *argcp, char **argv), "vpp",
-        P2V argcp, P2V argv)
+void
+shim_init_nhwindows(argcp, argv)
+int *argcp;
+char **argv;
+{
+#ifdef __EMSCRIPTEN__
+    void *args[] = { P2V argcp, P2V argv };
+#endif
+    debugf("SHIM GRAPHICS: shim_init_nhwindows\n");
+    bot_set_handler(shim_status_raw_bridge);
+#ifdef __EMSCRIPTEN__
+    if (!shim_callback_name) return;
+    local_callback(shim_callback_name, "shim_init_nhwindows", (void *) 0,
+                   "vpp", args);
+#else
+    if (!shim_graphics_callback) return;
+    shim_graphics_callback("shim_init_nhwindows", (void *) 0,
+                           "vpp", argcp, argv);
+#endif
+}
 VDECLCB(shim_player_selection, (void), "v")
 VDECLCB(shim_askname, (void), "v")
 VDECLCB(shim_get_nh_event, (void), "v")
-VDECLCB(shim_exit_nhwindows, (const char *str), "vs", P2V str)
+void
+shim_exit_nhwindows(str)
+const char *str;
+{
+#ifdef __EMSCRIPTEN__
+    void *args[] = { P2V str };
+#endif
+    debugf("SHIM GRAPHICS: shim_exit_nhwindows\n");
+    bot_set_handler((void (*)()) 0);
+#ifdef __EMSCRIPTEN__
+    if (!shim_callback_name) return;
+    local_callback(shim_callback_name, "shim_exit_nhwindows", (void *) 0,
+                   "vs", args);
+#else
+    if (!shim_graphics_callback) return;
+    shim_graphics_callback("shim_exit_nhwindows", (void *) 0, "vs", str);
+#endif
+}
 VDECLCB(shim_suspend_nhwindows, (const char *str), "vs", P2V str)
 VDECLCB(shim_resume_nhwindows, (void), "v")
 DECLCB(winid, shim_create_nhwindow, (int type), "ii", A2P type)
@@ -167,6 +240,16 @@ VDECLCB(shim_getlin, (const char *query, char *bufp), "vsp", P2V query, P2V bufp
 DECLCB(int, shim_get_ext_cmd, (void), "i")
 VDECLCB(shim_number_pad, (int state), "vi", A2P state)
 VDECLCB(shim_delay_output, (void), "v")
+VDECLCB(shim_status_init, (void), "v")
+VDECLCB(shim_status_enablefield,
+        (int fieldidx, const char *nm, const char *fmt, BOOLEAN_P enable),
+        "vippb",
+        A2P fieldidx, P2V nm, P2V fmt, A2P enable)
+VDECLCB(shim_status_update,
+        (int fldidx, genericptr_t ptr, int chg, int percent, int color,
+         unsigned long *colormasks),
+        "vipiiip",
+        A2P fldidx, P2V ptr, A2P chg, A2P percent, A2P color, P2V colormasks)
 #ifdef CHANGE_COLOR
 VDECLCB(shim_change_color, (int color, long rgb, int reverse), "viii",
         A2P color, A2P rgb, A2P reverse)
@@ -181,6 +264,147 @@ VDECLCB(shim_start_screen, (void), "v")
 VDECLCB(shim_end_screen, (void), "v")
 VDECLCB(shim_outrip, (winid tmpwin, int how), "vii", A2P tmpwin, A2P how)
 VDECLCB(shim_preference_update, (const char *pref), "vs", P2V pref)
+
+static void
+shim_status_bridge_emit_string(fieldidx, value)
+int fieldidx;
+const char *value;
+{
+    shim_status_update(fieldidx, (genericptr_t) (value ? value : ""), 0, 0, 0,
+                       (unsigned long *) 0);
+}
+
+static void
+shim_status_bridge_emit_mask(mask)
+unsigned long mask;
+{
+    unsigned long condmask = mask;
+
+    shim_status_update(SHIM_BL_CONDITION, (genericptr_t) &condmask, 0, 0, 0,
+                       (unsigned long *) 0);
+}
+
+static void
+shim_status_bridge_flush()
+{
+    shim_status_update(SHIM_BL_FLUSH, (genericptr_t) 0, 0, 0, 0,
+                       (unsigned long *) 0);
+}
+
+static void
+shim_status_bridge_reconfig()
+{
+    static const char fmt_string[] = "%s";
+
+    shim_status_init();
+    shim_status_enablefield(SHIM_BL_TITLE, "title", fmt_string, TRUE);
+    shim_status_enablefield(SHIM_BL_STR, "strength", fmt_string, TRUE);
+    shim_status_enablefield(SHIM_BL_DX, "dexterity", fmt_string, TRUE);
+    shim_status_enablefield(SHIM_BL_CO, "constitution", fmt_string, TRUE);
+    shim_status_enablefield(SHIM_BL_IN, "intelligence", fmt_string, TRUE);
+    shim_status_enablefield(SHIM_BL_WI, "wisdom", fmt_string, TRUE);
+    shim_status_enablefield(SHIM_BL_CH, "charisma", fmt_string, TRUE);
+    shim_status_enablefield(SHIM_BL_ALIGN, "alignment", fmt_string, TRUE);
+#ifdef SCORE_ON_BOTL
+    shim_status_enablefield(SHIM_BL_SCORE, "score", fmt_string,
+                            flags.showscore ? TRUE : FALSE);
+#endif
+    shim_status_enablefield(SHIM_BL_LEVELDESC, "dlevel", fmt_string, TRUE);
+    shim_status_enablefield(SHIM_BL_GOLD, "gold", fmt_string, TRUE);
+    shim_status_enablefield(SHIM_BL_HP, "hp", fmt_string, TRUE);
+    shim_status_enablefield(SHIM_BL_HPMAX, "hpmax", fmt_string, TRUE);
+    shim_status_enablefield(SHIM_BL_ENE, "pw", fmt_string, TRUE);
+    shim_status_enablefield(SHIM_BL_ENEMAX, "pwmax", fmt_string, TRUE);
+    shim_status_enablefield(SHIM_BL_AC, "ac", fmt_string, TRUE);
+    shim_status_enablefield(SHIM_BL_XP, Upolyd ? "hitdice" : "elevel",
+                            fmt_string, TRUE);
+#ifdef EXP_ON_BOTL
+    shim_status_enablefield(SHIM_BL_EXP, "experience", fmt_string,
+                            flags.showexp ? TRUE : FALSE);
+#endif
+    shim_status_enablefield(SHIM_BL_TIME, "time", fmt_string,
+                            flags.time ? TRUE : FALSE);
+    shim_status_enablefield(SHIM_BL_HUNGER, "hunger", fmt_string, TRUE);
+    shim_status_enablefield(SHIM_BL_CAP, "encumberance", fmt_string, TRUE);
+    shim_status_enablefield(SHIM_BL_CONDITION, "flags", fmt_string, TRUE);
+}
+
+static void
+shim_status_raw_bridge(reconfig, nv, values)
+int reconfig, nv;
+const char **values;
+{
+    int idx = 0;
+    unsigned long condition_mask = 0UL;
+
+    (void) nv;
+
+    if (reconfig) {
+        shim_status_bridge_reconfig();
+        return;
+    }
+
+    if (!values)
+        return;
+
+    shim_status_bridge_emit_string(SHIM_BL_TITLE, values[idx++]);
+    shim_status_bridge_emit_string(SHIM_BL_STR, values[idx++]);
+    shim_status_bridge_emit_string(SHIM_BL_DX, values[idx++]);
+    shim_status_bridge_emit_string(SHIM_BL_CO, values[idx++]);
+    shim_status_bridge_emit_string(SHIM_BL_IN, values[idx++]);
+    shim_status_bridge_emit_string(SHIM_BL_WI, values[idx++]);
+    shim_status_bridge_emit_string(SHIM_BL_CH, values[idx++]);
+    shim_status_bridge_emit_string(SHIM_BL_ALIGN, values[idx++]);
+#ifdef SCORE_ON_BOTL
+    if (flags.showscore)
+        shim_status_bridge_emit_string(SHIM_BL_SCORE, values[idx++]);
+#endif
+    shim_status_bridge_emit_string(SHIM_BL_LEVELDESC, values[idx++]);
+    shim_status_bridge_emit_string(SHIM_BL_GOLD, values[idx++]);
+    shim_status_bridge_emit_string(SHIM_BL_HP, values[idx++]);
+    shim_status_bridge_emit_string(SHIM_BL_HPMAX, values[idx++]);
+    shim_status_bridge_emit_string(SHIM_BL_ENE, values[idx++]);
+    shim_status_bridge_emit_string(SHIM_BL_ENEMAX, values[idx++]);
+    shim_status_bridge_emit_string(SHIM_BL_AC, values[idx++]);
+    shim_status_bridge_emit_string(SHIM_BL_XP, values[idx++]);
+#ifdef EXP_ON_BOTL
+    if (flags.showexp)
+        shim_status_bridge_emit_string(SHIM_BL_EXP, values[idx++]);
+#endif
+#ifdef SHOW_WEIGHT
+    if (flags.showweight) {
+        idx++;
+        idx++;
+    }
+#endif
+    if (flags.time)
+        shim_status_bridge_emit_string(SHIM_BL_TIME, values[idx++]);
+    shim_status_bridge_emit_string(SHIM_BL_HUNGER, values[idx++]);
+    shim_status_bridge_emit_string(SHIM_BL_CAP, values[idx++]);
+    idx++; /* raw flags string; condition mask is rebuilt below */
+
+    if (Levitation)
+        condition_mask |= RAW_STAT_LEVITATION;
+    if (Confusion)
+        condition_mask |= RAW_STAT_CONFUSION;
+    if (Sick && (u.usick_type & SICK_VOMITABLE))
+        condition_mask |= RAW_STAT_FOODPOIS;
+    if (Sick && (u.usick_type & SICK_NONVOMITABLE))
+        condition_mask |= RAW_STAT_ILL;
+    if (Blind)
+        condition_mask |= RAW_STAT_BLIND;
+    if (Stunned)
+        condition_mask |= RAW_STAT_STUNNED;
+    if (Hallucination)
+        condition_mask |= RAW_STAT_HALLUCINATION;
+    if (Slimed)
+        condition_mask |= RAW_STAT_SLIMED;
+    if (u.ustuck && !u.uswallow && !sticks(youmonst.data))
+        condition_mask |= SHIM_RAW_STAT_HELD;
+
+    shim_status_bridge_emit_mask(condition_mask);
+    shim_status_bridge_flush();
+}
 
 struct window_procs shim_procs = {
     "shim",
