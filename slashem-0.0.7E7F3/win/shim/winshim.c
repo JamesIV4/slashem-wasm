@@ -21,6 +21,34 @@
 #define debugf(...)
 #endif
 
+#define NH3D_TRACKED_MONSTER_NONE (-1)
+#define NH3D_TRACKED_PLAYER_ID 0
+#define NH3D_MONSTER_ATTACK_TRACKING_MAX 128
+#define NH3D_MONSTER_KILLER_STACK_MAX 8
+
+struct nh3d_recent_attack {
+    unsigned attacker_id;
+    int target_id;
+    long turn;
+};
+
+static struct nh3d_recent_attack
+    nh3d_recent_attacks[NH3D_MONSTER_ATTACK_TRACKING_MAX];
+static int nh3d_monster_killer_stack[NH3D_MONSTER_KILLER_STACK_MAX];
+static int nh3d_monster_killer_depth = 0;
+
+static boolean nh3d_monster_has_trackable_glyph(struct monst *);
+static int nh3d_monster_id_from_tile(XCHAR_P, XCHAR_P, int);
+static int nh3d_get_recent_attack_target_id(int);
+static void nh3d_record_recent_attack(unsigned, int);
+static void nh3d_queue_shim_notification(const char *, int, int, int, int);
+
+void nh3d_note_monster_attack(struct monst *, struct monst *);
+void nh3d_push_monster_killer(struct monst *);
+void nh3d_pop_monster_killer(void);
+int nh3d_get_current_monster_killer_id(void);
+void nh3d_emit_monster_killed(int, int, int, int);
+
 enum shim_status_fields {
     SHIM_BL_CHARACTERISTICS = -3,
     SHIM_BL_RESET = -2,
@@ -131,6 +159,176 @@ void name fn_args { \
 }
 #endif
 
+static boolean
+nh3d_monster_has_trackable_glyph(mtmp)
+struct monst *mtmp;
+{
+    return (boolean) (mtmp && (mtmp == u.usteed || canspotmon(mtmp)));
+}
+
+static int
+nh3d_monster_id_from_tile(x, y, glyph)
+XCHAR_P x, y;
+int glyph;
+{
+    struct monst *mtmp;
+
+    if (glyph_is_ridden_monster(glyph) && u.usteed && x == u.ux && y == u.uy)
+        return (int) u.usteed->m_id;
+    if (x == u.ux && y == u.uy)
+        return NH3D_TRACKED_PLAYER_ID;
+    if (!glyph_is_monster(glyph))
+        return NH3D_TRACKED_MONSTER_NONE;
+
+    mtmp = m_at((int) x, (int) y);
+    return mtmp ? (int) mtmp->m_id : NH3D_TRACKED_MONSTER_NONE;
+}
+
+static int
+nh3d_get_recent_attack_target_id(monster_id)
+int monster_id;
+{
+    int i;
+
+    if (monster_id <= 0)
+        return NH3D_TRACKED_MONSTER_NONE;
+    for (i = 0; i < NH3D_MONSTER_ATTACK_TRACKING_MAX; ++i)
+        if (nh3d_recent_attacks[i].attacker_id == (unsigned) monster_id
+            && nh3d_recent_attacks[i].turn == monstermoves)
+            return nh3d_recent_attacks[i].target_id;
+    return NH3D_TRACKED_MONSTER_NONE;
+}
+
+static void
+nh3d_record_recent_attack(attacker_id, target_id)
+unsigned attacker_id;
+int target_id;
+{
+    int i, empty_slot = -1;
+
+    if (!attacker_id)
+        return;
+
+    for (i = 0; i < NH3D_MONSTER_ATTACK_TRACKING_MAX; ++i) {
+        if (nh3d_recent_attacks[i].attacker_id == attacker_id) {
+            nh3d_recent_attacks[i].target_id = target_id;
+            nh3d_recent_attacks[i].turn = monstermoves;
+            return;
+        }
+        if (empty_slot < 0 && nh3d_recent_attacks[i].attacker_id == 0)
+            empty_slot = i;
+    }
+
+    if (empty_slot < 0)
+        empty_slot = (int) (attacker_id % NH3D_MONSTER_ATTACK_TRACKING_MAX);
+    nh3d_recent_attacks[empty_slot].attacker_id = attacker_id;
+    nh3d_recent_attacks[empty_slot].target_id = target_id;
+    nh3d_recent_attacks[empty_slot].turn = monstermoves;
+}
+
+void
+nh3d_note_monster_attack(attacker, target)
+struct monst *attacker, *target;
+{
+    boolean attacker_visible, target_visible;
+    int attacker_id, target_id, target_x, target_y, emitted_attacker_id;
+
+    if (!attacker || !attacker->m_id)
+        return;
+
+    attacker_visible = nh3d_monster_has_trackable_glyph(attacker);
+    target_visible = target ? nh3d_monster_has_trackable_glyph(target) : TRUE;
+    if (!attacker_visible && !target_visible)
+        return;
+
+    attacker_id = (int) attacker->m_id;
+    if (target) {
+        target_id =
+            target->m_id ? (int) target->m_id : NH3D_TRACKED_MONSTER_NONE;
+        target_x = target->mx;
+        target_y = target->my;
+    } else {
+        target_id = NH3D_TRACKED_PLAYER_ID;
+        target_x = u.ux;
+        target_y = u.uy;
+    }
+
+    if (attacker_visible && (target == 0 || target_visible))
+        nh3d_record_recent_attack(attacker->m_id, target_id);
+
+    if (target && !target_visible)
+        return;
+
+    emitted_attacker_id =
+        attacker_visible ? attacker_id : NH3D_TRACKED_MONSTER_NONE;
+    nh3d_queue_shim_notification("shim_monster_attack", emitted_attacker_id,
+                                 target_id, target_x, target_y);
+}
+
+void
+nh3d_push_monster_killer(killer)
+struct monst *killer;
+{
+    int killer_id = NH3D_TRACKED_MONSTER_NONE;
+
+    if (killer && nh3d_monster_has_trackable_glyph(killer) && killer->m_id)
+        killer_id = (int) killer->m_id;
+
+    if (nh3d_monster_killer_depth < NH3D_MONSTER_KILLER_STACK_MAX)
+        nh3d_monster_killer_stack[nh3d_monster_killer_depth++] = killer_id;
+}
+
+void
+nh3d_pop_monster_killer()
+{
+    if (nh3d_monster_killer_depth > 0)
+        --nh3d_monster_killer_depth;
+}
+
+int
+nh3d_get_current_monster_killer_id()
+{
+    return (nh3d_monster_killer_depth > 0)
+               ? nh3d_monster_killer_stack[nh3d_monster_killer_depth - 1]
+               : NH3D_TRACKED_MONSTER_NONE;
+}
+
+void
+nh3d_emit_monster_killed(monster_id, killer_id, x, y)
+int monster_id, killer_id, x, y;
+{
+    if (monster_id <= 0)
+        return;
+    nh3d_queue_shim_notification("shim_monster_killed", monster_id, killer_id,
+                                 x, y);
+}
+
+static void
+nh3d_queue_shim_notification(name, a, b, c, d)
+const char *name;
+int a, b, c, d;
+{
+#ifdef __EMSCRIPTEN__
+    EM_ASM({
+        globalThis.nethackGlobal = globalThis.nethackGlobal || {};
+        if (!Array.isArray(globalThis.nethackGlobal.pendingShimNotifications)) {
+            globalThis.nethackGlobal.pendingShimNotifications = [];
+        }
+        globalThis.nethackGlobal.pendingShimNotifications.push([
+            UTF8ToString($0),
+            $1,
+            $2,
+            $3,
+            $4,
+        ]);
+    }, name, a, b, c, d);
+#else
+    if (!shim_graphics_callback)
+        return;
+    shim_graphics_callback(name, NULL, "viiii", a, b, c, d);
+#endif
+}
+
 void
 shim_init_nhwindows(argcp, argv)
 int *argcp;
@@ -225,8 +423,30 @@ VDECLCB(shim_cliparound, (int x, int y), "vii", A2P x, A2P y)
 #ifdef POSITIONBAR
 VDECLCB(shim_update_positionbar, (char *posbar), "vs", P2V posbar)
 #endif
-VDECLCB(shim_print_glyph, (winid w, XCHAR_P x, XCHAR_P y, int glyph),
-        "vi00i", A2P w, A2P x, A2P y, A2P glyph)
+void
+shim_print_glyph(w, x, y, glyph)
+winid w;
+XCHAR_P x, y;
+int glyph;
+{
+    int monster_id = nh3d_monster_id_from_tile(x, y, glyph);
+    int attacking_target_id = nh3d_get_recent_attack_target_id(monster_id);
+
+    debugf("SHIM GRAPHICS: shim_print_glyph\n");
+#ifdef __EMSCRIPTEN__
+    if (shim_callback_name) {
+        void *args[] = { A2P w, A2P x, A2P y, A2P glyph, A2P monster_id,
+                         A2P attacking_target_id };
+        local_callback(shim_callback_name, "shim_print_glyph", (void *) 0,
+                       "vi00iii", args);
+    }
+#else
+    if (shim_graphics_callback)
+        shim_graphics_callback("shim_print_glyph", (void *) 0, "vi00iii", w,
+                               x, y, glyph, monster_id,
+                               attacking_target_id);
+#endif
+}
 VDECLCB(shim_raw_print, (const char *str), "vs", P2V str)
 VDECLCB(shim_raw_print_bold, (const char *str), "vs", P2V str)
 DECLCB(int, shim_nhgetch, (void), "i")
@@ -485,6 +705,19 @@ EM_JS(void, local_callback,
         let pendingCb = globalThis[pendingCbName];
         if (pendingCb) {
             pendingCb.call(null, "shim_update_inventory");
+        }
+    }
+    if (globalThis.nethackGlobal
+        && Array.isArray(globalThis.nethackGlobal.pendingShimNotifications)
+        && globalThis.nethackGlobal.pendingShimNotifications.length > 0) {
+        let pendingCbName = UTF8ToString(cb_name);
+        let pendingCb = globalThis[pendingCbName];
+        if (pendingCb) {
+            const pendingNotifications =
+                globalThis.nethackGlobal.pendingShimNotifications.splice(0);
+            for (let i = 0; i < pendingNotifications.length; ++i) {
+                pendingCb.call(null, ...pendingNotifications[i]);
+            }
         }
     }
 

@@ -57,6 +57,8 @@ STATIC_DCL struct obj *FDECL(make_corpse,(struct monst *));
 STATIC_DCL void FDECL(m_detach, (struct monst *, struct permonst *));
 STATIC_DCL void FDECL(lifesaved_monster, (struct monst *));
 static void FDECL(unpoly_monster, (struct monst *));
+extern int NDECL(nh3d_get_current_monster_killer_id);
+extern void FDECL(nh3d_emit_monster_killed, (int, int, int, int));
 
 /* convert the monster index of an undead to its living counterpart */
 int
@@ -1926,6 +1928,11 @@ const char *fltxt;
 int how;
 {
 	boolean be_sad = FALSE;		/* true if unseen pet is killed */
+	boolean was_visible = (boolean) ((mdef == u.usteed) || canspotmon(mdef));
+	int killed_monster_id = mdef->m_id ? (int) mdef->m_id : -1;
+	int killer_id = nh3d_get_current_monster_killer_id();
+	int kill_x = (mdef == u.usteed) ? u.ux : mdef->mx;
+	int kill_y = (mdef == u.usteed) ? u.uy : mdef->my;
 
 	if ((mdef->wormno ? worm_known(mdef) : cansee(mdef->mx, mdef->my))
 		&& fltxt)
@@ -1943,6 +1950,9 @@ int how;
 	else
 	    mondied(mdef);
 
+	if (was_visible && DEADMONSTER(mdef))
+	    nh3d_emit_monster_killed(killed_monster_id, killer_id, kill_x,
+				     kill_y);
 	if (be_sad && mdef->mhp <= 0)
 	    You("have a sad feeling for a moment, then it passes.");
 }
@@ -2019,6 +2029,11 @@ xkilled(mtmp, dest)
 	register struct trap *t;
 	boolean redisp = FALSE;
 	boolean wasinside = u.uswallow && (u.ustuck == mtmp);
+	boolean was_visible = (boolean) ((mtmp == u.usteed) || canspotmon(mtmp));
+	int killed_monster_id = mtmp->m_id ? (int) mtmp->m_id : -1;
+	int kill_x = (mtmp == u.usteed) ? u.ux : x;
+	int kill_y = (mtmp == u.usteed) ? u.uy : y;
+	int killer_id = nh3d_get_current_monster_killer_id();
 
 
 	/* KMH, conduct */
@@ -2068,6 +2083,12 @@ xkilled(mtmp, dest)
 		    pline("Maybe not...");
 		return;
 	}
+
+	if (killer_id < 0)
+	    killer_id = 0;
+	if (was_visible)
+	    nh3d_emit_monster_killed(killed_monster_id, killer_id, kill_x,
+				     kill_y);
 
 	mdat = mtmp->data; /* note: mondead can change mtmp->data */
 	mndx = monsndx(mdat);

@@ -19,6 +19,9 @@ static NEARDATA struct obj *otmp;
 
 static const char brief_feeling[] =
 	"have a %s feeling for a moment, then it passes.";
+extern void FDECL(nh3d_note_monster_attack, (struct monst *, struct monst *));
+extern void FDECL(nh3d_push_monster_killer, (struct monst *));
+extern void NDECL(nh3d_pop_monster_killer);
 
 STATIC_DCL char *FDECL(mon_nam_too, (char *,struct monst *,struct monst *));
 STATIC_DCL void FDECL(mrustm, (struct monst *, struct monst *, struct obj *));
@@ -1795,6 +1798,8 @@ physical:
 	if (magr->mtame != 0 && tech_inuse(T_PRIMAL_ROAR)) {
 		tmp *= 2; /* Double Damage! */
 	}
+	if (tmp > 0)
+	    nh3d_note_monster_attack(magr, mdef);
 	if((mdef->mhp -= tmp) < 1) {
 	    if (m_at(mdef->mx, mdef->my) == magr) {  /* see gulpmm() */
 		remove_monster(mdef->mx, mdef->my);
@@ -1803,8 +1808,10 @@ physical:
 		mdef->mhp = 0;
 	    }
 	    /* get experience from spell creatures */
+	    nh3d_push_monster_killer(magr);
 	    if (magr->uexp) mon_xkilled(mdef, "", (int)mattk->adtyp);
 	    else monkilled(mdef, "", (int)mattk->adtyp);
+	    nh3d_pop_monster_killer();
 
 	    if (mdef->mhp > 0) return 0; /* mdef lifesaved */
 
@@ -2087,10 +2094,14 @@ int mdead;
 	else tmp = 0;
 
     assess_dmg:
+	if (tmp > 0)
+	    nh3d_note_monster_attack(mdef, magr);
 	if((magr->mhp -= tmp) <= 0) {
+		nh3d_push_monster_killer(mdef);
 		/* get experience from spell creatures */
 		if (mdef->uexp) mon_xkilled(magr, "", (int)mddat->mattk[i].adtyp);
 		else monkilled(magr, "", (int)mddat->mattk[i].adtyp);
+		nh3d_pop_monster_killer();
 
 		return (mdead | mhit | MM_AGR_DIED);
 	}
@@ -2143,4 +2154,3 @@ int aatyp;
 #endif /* OVLB */
 
 /*mhitm.c*/
-
