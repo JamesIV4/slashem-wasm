@@ -33,9 +33,9 @@ static long final_fpos;
 #define NAMSZ	10
 #define DTHSZ	100
 #define ROLESZ   3
-#define PERSMAX	 3		/* entries per name/uid per char. allowed */
+#define PERSMAX	 0		/* entries per name/uid per char. allowed; 0 = unlimited */
 #define POINTSMIN	1	/* must be > 0 */
-#define ENTRYMAX	100	/* must be >= 10 */
+#define ENTRYMAX	0	/* max entries to keep; 0 = unlimited */
 
 #if !defined(MICRO) && !defined(MAC) && !defined(WIN32)
 #define PERS_IS_UID		/* delete for PERSMAX per name; now per uid */
@@ -324,6 +324,8 @@ int how;
 	int uid = getuid();
 	int rank, rank0 = -1, rank1 = 0;
 	int occ_cnt = PERSMAX;
+	boolean unlimited_entries = (ENTRYMAX <= 0);
+	boolean unlimited_personal_entries = (PERSMAX <= 0);
 	register struct toptenentry *t0, *tprev;
 	struct toptenentry *t1;
 	FILE *rfile;
@@ -492,7 +494,7 @@ int how;
 	    } else tprev = t1;
 
 	    if(t1->points == 0) break;
-	    if(
+	    if(!unlimited_personal_entries &&
 #ifdef PERS_IS_UID
 		t1->uid == t0->uid &&
 #else
@@ -517,12 +519,12 @@ int how;
 			continue;
 		    }
 		}
-	    if(rank <= ENTRYMAX) {
+	    if(unlimited_entries || rank <= ENTRYMAX) {
 		t1->tt_next = newttentry();
 		t1 = t1->tt_next;
 		rank++;
 	    }
-	    if(rank > ENTRYMAX) {
+	    if(!unlimited_entries && rank > ENTRYMAX) {
 		t1->points = 0;
 		break;
 	    }
@@ -545,9 +547,14 @@ int how;
 			topten_print("You made the top ten list!");
 		    else {
 			char pbuf[BUFSZ];
-			Sprintf(pbuf,
-			  "You reached the %d%s place on the top %d list.",
-				rank0, ordin(rank0), ENTRYMAX);
+			if (unlimited_entries)
+			    Sprintf(pbuf,
+			      "You reached the %d%s place on the score list.",
+				    rank0, ordin(rank0));
+			else
+			    Sprintf(pbuf,
+			      "You reached the %d%s place on the top %d list.",
+				    rank0, ordin(rank0), ENTRYMAX);
 			topten_print(pbuf);
 		    }
 		    topten_print("");
